@@ -3,9 +3,14 @@ import glob
 import logging
 
 import pandas as pd
-from lxml import etree
 
-from config import DIR, PATH
+try:
+    from config import DIR, PATH
+except ImportError as e:
+    print(e)
+    print("Please make sure to (copy &) rename 'sample_config.py' to "
+          "'config.py'.")
+
 
 """
     This file is part of reddit-nba-corpus.
@@ -26,45 +31,15 @@ from config import DIR, PATH
 
 
 def get_meta_files():
-    pattern = os.path.join(DIR["meta"], "[0-9]*-[0-9]*-[0-9]**.csv")
+    pattern = os.path.join(DIR["meta"], "*_[0-9]*.csv")
     return glob.glob(pattern)
 
 
 def combine_metadata(meta_files):
     meta_frames = [pd.read_csv(f, index_col=0) for f in meta_files]
     dfr = pd.concat(meta_frames, ignore_index=True)
-    dfr["DATE"] = dfr["DATE"].fillna("0000-00-00")
     dfr.sort_values(by=["DATE", "SUBREDDIT"], inplace=True)
-    dfr["YEAR"] = dfr["DATE"].apply(lambda d: d.split("-")[0])
-    dfr["MONTH"] = dfr["DATE"].apply(lambda d: d.split("-")[1])
-    dfr["YEAR_MONTH"] = dfr["DATE"].apply(lambda d: "-".join(d.split("-")[:2]))
-    dfr.SUCCESS = dfr.SUCCESS.astype(bool)
     return dfr.reset_index(drop=True)
-
-
-def add_post_information(r):
-    r["XML_PATH"] = os.path.join(DIR["xml"], r.SUBREDDIT, r.YEAR,
-                                 r.DATE, "{}_{}_{}.xml"
-                                 .format(r.SUBREDDIT, r.DATE, r.ID))
-    try:
-        tree = etree.parse(r["XML_PATH"])
-    except IOError:
-        r["SUCCESS"] = False
-    else:
-        sub = tree.find(".//submission")
-        r["SCORE"] = int(sub.get("score"))
-        r["GILDED"] = bool(int(sub.get("gilded")))
-        r["EDITED"] = sub.get("edited")
-        r["STICKIED"] = sub.get("stickied")
-        r["OVER_18"] = sub.get("over_18")
-        r["TITLE"] = sub.get("title")
-        r["AUTHOR_NAME"] = sub.get("author_name")
-        r["URL"] = sub.get("url")
-        r["HAS_MEDIA"] = sub.get("has_media")
-        r["NUM_COM"] = sub.get("num_comments")
-        r["NUM_COM_FOUND"] = len(list(sub.findall(".//commment")))
-        r["IS_SELF"] = sub.get("is_self")
-    return r
 
 
 def main(generate=True, analyze=True):
@@ -84,7 +59,6 @@ def main(generate=True, analyze=True):
         meta_df = combine_metadata(meta_files)
         logging.info("Adding information to {} rows"
                      .format(len(meta_df.index)))
-        meta_df = meta_df.apply(add_post_information, axis="columns")
         meta_df.to_csv(PATH["metadata"])
     if analyze:
         try:
@@ -113,7 +87,7 @@ def main(generate=True, analyze=True):
             size_df = size_df.rename("NUM_SUBMISSIONS").to_frame()
             size_df.to_csv(os.path.join(DIR["stats"],
                                         "num_subs_by_month.csv"))
-            size_df = meta_df.groupby(["YEAR_MONTH"]).size()
+            size_df = meta_df.groupby(["YEAR", "MONTH"]).size()
             size_df = size_df.rename("NUM_SUBMISSIONS").to_frame()
             size_df.to_csv(os.path.join(DIR["stats"],
                                         "num_subs_by_year_month.csv"))

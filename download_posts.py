@@ -1,15 +1,22 @@
+import os
 import datetime
 import pytz
 import time
 import re
+import argparse
+import logging
 
 import praw
 import ftfy
 from lxml import etree
 import pandas as pd
 
-from config import *
-
+try:
+    from config import *
+except ImportError as e:
+    print(e)
+    print("Please make sure to (copy &) rename 'sample_config.py' to "
+          "'config.py' and insert valid Reddit API credentials.")
 """
     This file is part of reddit-nba-corpus.
 
@@ -68,16 +75,13 @@ def create_xml_doc(s):
     s_node = etree.Element("submission")
     cs_node = etree.Element("comments")
 
-    s_att_list = ["author_flair_text", "created", "created_utc", "edited",
-                  "gilded", "ups", "downs", "score", "title", "id", "domain",
-                  "url", "num_comments", "permalink", "locked", "num_reports",
-                  "over_18", "stickied", "mod_reports", "removal_reason",
-                  "is_self", "likes", "report_reasons"]
+    s_att_list = ["created_utc", "edited", "has_media",
+                  "gilded", "score", "title", "id", "domain",
+                  "url", "permalink", "locked",
+                  "over_18", "stickied", "is_self", "num_reports"]
 
-    c_att_list = ['author_flair_text', 'created', 'created_utc', 'edited',
-                  'gilded', 'ups', 'downs', 'score', 'id', 'num_reports',
-                  'stickied', 'mod_reports', 'removal_reason', 'likes',
-                  'report_reasons', 'parent_id', 'controversiality']
+    c_att_list = ['created_utc', 'edited', 'gilded', 'id', 'num_reports',
+                  'parent_id', 'controversiality']
 
     s_node.set("author_name", s.author.name)
     s_node.set("subreddit_name", s.subreddit.display_name)
@@ -104,9 +108,10 @@ def create_xml_doc(s):
         s.comments.replace_more(limit=0)
     except Exception as e:
         # TO DO: better solution (wait & retry)
-        print(e)
+        logging.warning(e)
         time.sleep(90)
-        return False
+        return False, 0
+    num_comments = 0
     for c in s.comments.list():
         c_node = etree.Element("comment")
         for k in c_att_list:
@@ -125,7 +130,10 @@ def create_xml_doc(s):
             except ValueError as e:
                 c_node.text = strip_tags(ftfy.fix_text(c.body_html)).strip()
         cs_node.append(c_node)
+        num_comments += 1
     s_node.append(cs_node)
+    s_node.set("num_com_found", str(num_comments))
+    s_node.set("num_com_listed", str(s.num_comments))
     root.append(s_node)
     s_date = datetime.datetime.fromtimestamp(s.created_utc)
     year = str(s_date.year)
@@ -142,17 +150,17 @@ def create_xml_doc(s):
         tree.write(fp, pretty_print=True, encoding='utf-8',
                    xml_declaration=True)
     except Exception as e:
-        print(e, "\t\t", s.title)
-        return False
+        logging.warning(e)
+        return False, num_comments
     else:
-        print("\t", s.title[:300])
-        return True
+        logging.info("{}\t{}\t{}".format(s_date.date(),
+                                         s.subreddit.display_name, s.title))
+        return True, num_comments
 
 
 def process_date(d, subreddit, reddit):
     ts1, ts2 = get_timestamps_for_date(d)
-
-    csv_fn = "{}_{}.csv".format(str(d), subreddit.lower())
+    csv_fn = "{}_{}.csv".format(subreddit.lower(), d.year)
     csv_fp = os.path.join(DIR["meta"], csv_fn)
     try:
         df = pd.read_csv(csv_fp, index_col=0)
@@ -163,14 +171,19 @@ def process_date(d, subreddit, reddit):
             os.makedirs(DIR["meta"])
         except FileExistsError:
             pass
-    print(subreddit, d.date())
     for s in reddit.subreddit(subreddit).submissions(start=ts1, end=ts2):
         if str(s.id) not in set(str(df["ID"])):
-            success = create_xml_doc(s)
+            success, num_com = create_xml_doc(s)
             s_date = datetime.datetime.fromtimestamp(s.created_utc)
             meta = {"DATE": s_date.date(), "SUBREDDIT": subreddit,
                     "FETCHED": datetime.datetime.now().date(),
-                    "ID": s.id, "SUCCESS": success
+                    "ID": s.id, "SUCCESS": success, "PERMALINK": s.permalink,
+                    "SCORE": s.score, "IS_SELF": s.is_self, "DOMAIN": s.domain,
+                    "HAS_MEDIA": s.media, "YEAR": s_date.year,
+                    "MONTH": s_date.month, "AUTHOR_NAME": s.author.name,
+                    "GILDED": s.gilded, "EDITED": s.edited, "TITLE": s.title,
+                    "OVER_18": s.over_18, "STICKIED": s.stickied,
+                    "NUM_COM_FOUND": num_com, "NUM_COM_LISTED": s.num_comments
                     }
             try:
                 df = df.append(meta, ignore_index=True)
@@ -186,7 +199,7 @@ def get_dates():
     return dates
 
 
-def process_r_nba(dates):
+def process_r_nba_by_date(dates, reddit):
     """For each date get all submissions from r/nba"""
     reddit = praw.Reddit(user_agent=USER_AGENT,
                          client_id=CLIENT_ID,
@@ -195,21 +208,67 @@ def process_r_nba(dates):
         process_date(d, "nba", reddit)
 
 
-def process_team_subs_by_date(dates):
+def process_team_subs_by_date(dates, reddit):
     """For each date, get all submissions from all team subreddits """
-    reddit = praw.Reddit(user_agent=USER_AGENT,
-                         client_id=CLIENT_ID,
-                         client_secret=CLIENT_SECRET)
     for d in dates:
-        for k, v in TEAM_SUBREDDITS.items():
+        for v in sorted(TEAM_SUBREDDITS.values()):
             process_date(d, v, reddit)
 
 
-def main():
+def process_date_first(dates, reddit):
+    """ For each date, get all submissions for each subreddit"""
+    for d in dates:
+        for s in sorted(SUBREDDITS):
+            process_date(d, s, reddit)
+
+
+def process_sub_first(dates, reddit):
+    """ For each subreddit, get all submissions for each date"""
+    for s in sorted(SUBREDDITS):
+        for d in dates:
+            process_date(d, s, reddit)
+
+
+def main(args):
+    logging.basicConfig(filename="download.log", level=logging.INFO,
+                        filemode="w")
+    console = logging.StreamHandler()
+    console.setLevel(logging.INFO)
+    formatter = logging.Formatter('%(levelname)-8s %(message)s')
+    console.setFormatter(formatter)
+    logging.getLogger('').addHandler(console)
     dates = get_dates()
-    process_r_nba(dates)
-    process_team_subs_by_date(dates)
+    reddit = praw.Reddit(user_agent=USER_AGENT,
+                         client_id=CLIENT_ID,
+                         client_secret=CLIENT_SECRET)
+
+    if args.nba_only:
+        process_r_nba_by_date(dates, reddit)
+    elif args.team_only:
+        process_team_subs_by_date(dates, reddit)
+    elif args.subreddit_first:
+        process_sub_first(dates, reddit)
+    else:
+        process_date_first(dates, reddit)
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Download reddit posts. "
+                                     "Defaults to --date-first.")
+    method_group = parser.add_mutually_exclusive_group()
+    method_group.add_argument('-d', '--date-first', dest="date_first",
+                              help="Download date by date (all subreddits)",
+                              action="store_true")
+    method_group.add_argument('-s', '--sub-first',
+                              dest="subreddit_first",
+                              help="Download subreddit by subreddit "
+                              "(all dates)",
+                              action="store_true")
+    method_group.add_argument('-n', '--nba-only', dest="nba_only",
+                              help="Only download from r/nba",
+                              action="store_true")
+    method_group.add_argument('-t', '--team-only', dest="team_only",
+                              help="Only download from team subreddits",
+                              action="store_true")
+    args = parser.parse_args()
+    main(args)

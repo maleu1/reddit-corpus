@@ -5,7 +5,13 @@ import spacy
 import pandas as pd
 from lxml import etree
 
-from config import DIR, PATH
+try:
+    from config import DIR, PATH
+except ImportError as e:
+    print(e)
+    print("Please make sure to (copy &) rename 'sample_config.py' to "
+          "'config.py'.")
+
 
 """
     This file is part of reddit-nba-corpus.
@@ -33,35 +39,20 @@ def get_xml(r):
 
 
 def create_subcorpus(g):
-    handle = "{}_{}".format(g.iloc[0]["SUBREDDIT"], g.iloc[0]["YEAR_MONTH"])
+    r = g.iloc[0]
+    handle = "{}_{}-{}".format(r["SUBREDDIT"], r["YEAR"], r["MONTH"])
     num_subs = len(g)
     post_xml_df = g.apply(get_xml, axis="columns")
     root = etree.Element("subcorpus")
-    root.set("num_submissions", str(num_subs))
-    root.set("year", str(g.iloc[0]["YEAR"]))
-    root.set("month", str(g.iloc[0]["MONTH"]))
-    root.set("subreddit", g.iloc[0]["SUBREDDIT"])
+    root.set("num_sub", str(num_subs))
+    root.set("year", str(r["YEAR"]))
+    root.set("month", str(r["MONTH"]))
+    root.set("subreddit", r["SUBREDDIT"])
     root.set("handle", handle)
-    # Strip some unneeded attributes
-    to_remove = ["ups", "author_flair_text", "created", "downs",
-                 "controversiality", "mod_reports", "removal_reason", "likes",
-                 "report_reason"]
     for i, tree in post_xml_df.iteritems():
         if tree is not None:
             sub = tree.find(".//submission")
             sub.set("handle", handle)
-            for a in to_remove:
-                try:
-                    del sub.attrib[a]
-                except KeyError:
-                    pass
-            comments = sub.findall(".//comment")
-            for com in comments:
-                for a in to_remove:
-                    try:
-                        del com.attrib[a]
-                    except KeyError:
-                        pass
             root.append(sub)
     tree = etree.ElementTree(root)
     fn = "corpus_{}.xml".format(handle)
@@ -180,7 +171,7 @@ def to_plaintext(files):
 
 
 def add_ling_information(r):
-    handle = "{}_{}".format(r["SUBREDDIT"], r["YEAR_MONTH"])
+    handle = "{}_{}-{}".format(r["SUBREDDIT"], r["YEAR"], r["MONTH"])
     r["CORPUS_FN"] = "corpus_{}.xml".format(handle)
     try:
         tree = etree.parse(os.path.join(DIR["corpus_tag_xml"], r["CORPUS_FN"]))

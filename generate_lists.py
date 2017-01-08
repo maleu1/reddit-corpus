@@ -5,7 +5,12 @@ import collections
 import pandas as pd
 from lxml import etree
 
-from config import DIR
+try:
+    from config import DIR
+except ImportError as e:
+    print(e)
+    print("Please make sure to (copy &) rename 'sample_config.py' to "
+          "'config.py'.")
 
 """
     This file is part of reddit-nba-corpus.

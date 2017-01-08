@@ -85,4 +85,4 @@ DIR = {"xml": os.path.join(BASE_DIR, "xml"),
        "plots": os.path.join(BASE_DIR, "plots")
        }
 
-PATH = {"metadata": os.path.join(BASE_DIR, "full_metadata.csv")}
+PATH = {"metadata": os.path.join(BASE_DIR, "all_metadata.csv")}
