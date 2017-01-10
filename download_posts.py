@@ -175,6 +175,10 @@ def process_date(d, subreddit, reddit):
         if str(s.id) not in set(str(df["ID"])):
             success, num_com = create_xml_doc(s)
             s_date = datetime.datetime.fromtimestamp(s.created_utc)
+            dn = os.path.join(s.subreddit.display_name.lower(),
+                              str(s_date.year), str(s_date.date()))
+            fn = "{}_{}_{}.xml".format(s.subreddit.display_name.lower(),
+                                       str(s_date.date()), s.id)
             meta = {"DATE": s_date.date(), "SUBREDDIT": subreddit,
                     "FETCHED": datetime.datetime.now().date(),
                     "ID": s.id, "SUCCESS": success, "PERMALINK": s.permalink,
@@ -183,7 +187,8 @@ def process_date(d, subreddit, reddit):
                     "MONTH": s_date.month, "AUTHOR_NAME": s.author.name,
                     "GILDED": s.gilded, "EDITED": s.edited, "TITLE": s.title,
                     "OVER_18": s.over_18, "STICKIED": s.stickied,
-                    "NUM_COM_FOUND": num_com, "NUM_COM_LISTED": s.num_comments
+                    "NUM_COM_FOUND": num_com, "NUM_COM_LISTED": s.num_comments,
+                    "XML_PATH": os.path.join(dn, fn)
                     }
             try:
                 df = df.append(meta, ignore_index=True)

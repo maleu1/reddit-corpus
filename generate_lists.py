@@ -6,7 +6,7 @@ import pandas as pd
 from lxml import etree
 
 try:
-    from config import DIR
+    from config import DIR, YEARS
 except ImportError as e:
     print(e)
     print("Please make sure to (copy &) rename 'sample_config.py' to "

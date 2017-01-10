@@ -33,14 +33,15 @@ except ImportError as e:
 
 def get_xml(r):
     try:
-        return etree.parse(r["XML_PATH"])
+        return etree.parse(os.path.join(DIR["xml"], r["XML_PATH"]))
     except (IOError, TypeError):
         return None
 
 
 def create_subcorpus(g):
     r = g.iloc[0]
-    handle = "{}_{}-{}".format(r["SUBREDDIT"], r["YEAR"], r["MONTH"])
+    m = str(int(r["MONTH"])).zfill(2)
+    handle = "{}_{}-{}".format(r["SUBREDDIT"], int(r["YEAR"]), m)
     num_subs = len(g)
     post_xml_df = g.apply(get_xml, axis="columns")
     root = etree.Element("subcorpus")
@@ -199,7 +200,7 @@ def add_ling_information(r):
                 r["COM_MEAN_SC"] = r["COM_SC"] / r["NUM_COM_FOUND"]
             except ZeroDivisionError:
                 r["COM_MEAN_SC"] = 0
-            r["WC"] = r["SELF_WC"] + r["COMMENT_WC"]
+            r["WC"] = r["SELF_WC"] + r["COM_WC"]
             r["MEAN_WC"] = ((r["COM_WC"] + r["SELF_WC"]) /
                             (r["NUM_COM_FOUND"] + 1))
     return r
@@ -243,7 +244,7 @@ def main():
                         .format(PATH["METADATA"]))
     else:
         # group by subreddit and YYYY-MM for subcorpora
-        grouped = meta_df.groupby(["SUBREDDIT", "YEAR_MONTH"])
+        grouped = meta_df.groupby(["SUBREDDIT", "YEAR", "MONTH"])
         logging.info("Creating the untagged XML corpus")
         meta_df = grouped.apply(create_subcorpus)
         files = set(meta_df["CORPUS_FN"])
