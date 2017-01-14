@@ -69,9 +69,7 @@ def create_xml_doc(s):
     """
         Creates an xml doc for a submission on reddit.
     """
-
-    root = etree.Element("reddit")
-    tree = etree.ElementTree(root)
+    s_date = datetime.datetime.fromtimestamp(s.created_utc)
     s_node = etree.Element("submission")
     cs_node = etree.Element("comments")
 
@@ -85,6 +83,7 @@ def create_xml_doc(s):
 
     s_node.set("author_name", s.author.name)
     s_node.set("subreddit_name", s.subreddit.display_name)
+    s_node.set("date", str(s_date.date()))
     try:
         s_node.text = s.selftext
     except ValueError:
@@ -114,6 +113,7 @@ def create_xml_doc(s):
     num_comments = 0
     for c in s.comments.list():
         c_node = etree.Element("comment")
+        c_node.set("date", str(s_date.date()))
         for k in c_att_list:
             try:
                 val = str(c.__dict__[k])
@@ -134,28 +134,7 @@ def create_xml_doc(s):
     s_node.append(cs_node)
     s_node.set("num_com_found", str(num_comments))
     s_node.set("num_com_listed", str(s.num_comments))
-    root.append(s_node)
-    s_date = datetime.datetime.fromtimestamp(s.created_utc)
-    year = str(s_date.year)
-    fd = os.path.join(DIR["xml"], s.subreddit.display_name.lower(), year,
-                      str(s_date.date()))
-    fn = "{}_{}_{}.xml".format(s.subreddit.display_name.lower(),
-                               str(s_date.date()), s.id)
-    try:
-        os.makedirs(fd)
-    except FileExistsError:
-        pass
-    fp = os.path.join(fd, fn)
-    try:
-        tree.write(fp, pretty_print=True, encoding='utf-8',
-                   xml_declaration=True)
-    except Exception as e:
-        logging.warning(e)
-        return False, num_comments
-    else:
-        logging.info("{}\t{}\t{}".format(s_date.date(),
-                                         s.subreddit.display_name, s.title))
-        return True, num_comments
+    return s_node, num_comments
 
 
 def process_date(d, subreddit, reddit):
@@ -171,27 +150,52 @@ def process_date(d, subreddit, reddit):
             os.makedirs(DIR["meta"])
         except FileExistsError:
             pass
+    dn = os.path.join(DIR["xml"], subreddit.lower(), str(d.year))
+    try:
+        os.makedirs(dn)
+    except FileExistsError:
+        pass
+    root = etree.Element("reddit")
+    root.set("date", str(d.date()))
+    root.set("subreddit", subreddit)
+    tree = etree.ElementTree(root)
+    fn = "reddit_{}_{}.xml".format(subreddit.lower(),
+                                   str(d.date()))
+    fp = os.path.join(dn, fn)
     for s in reddit.subreddit(subreddit).submissions(start=ts1, end=ts2):
         if str(s.id) not in set(str(df["ID"])):
-            success, num_com = create_xml_doc(s)
-            s_date = datetime.datetime.fromtimestamp(s.created_utc)
-            dn = os.path.join(s.subreddit.display_name.lower(),
-                              str(s_date.year), str(s_date.date()))
-            fn = "{}_{}_{}.xml".format(s.subreddit.display_name.lower(),
-                                       str(s_date.date()), s.id)
-            meta = {"DATE": s_date.date(), "SUBREDDIT": subreddit,
-                    "FETCHED": datetime.datetime.now().date(),
-                    "ID": s.id, "SUCCESS": success, "PERMALINK": s.permalink,
-                    "SCORE": s.score, "IS_SELF": s.is_self, "DOMAIN": s.domain,
-                    "HAS_MEDIA": s.media, "YEAR": s_date.year,
-                    "MONTH": s_date.month, "AUTHOR_NAME": s.author.name,
-                    "GILDED": s.gilded, "EDITED": s.edited, "TITLE": s.title,
-                    "OVER_18": s.over_18, "STICKIED": s.stickied,
-                    "NUM_COM_FOUND": num_com, "NUM_COM_LISTED": s.num_comments,
-                    "XML_PATH": os.path.join(dn, fn)
-                    }
+            s_node, num_com = create_xml_doc(s)
+            if s_node is not None:
+                root.append(s_node)
+                s_date = datetime.datetime.fromtimestamp(s.created_utc)
+                try:
+                    tree.write(fp, pretty_print=True, encoding='utf-8',
+                               xml_declaration=True)
+                except Exception as e:
+                    logging.warning(e)
+                    success = False
+                else:
+                    logging.info("{}\t{}\t{}".format(s_date.date(),
+                                                     s.subreddit.display_name,
+                                                     s.title))
+                success = True
+            else:
+                success = False
+            m = {"DATE": s_date.date(), "SUBREDDIT": subreddit,
+                 "FETCHED": datetime.datetime.now().date(),
+                 "ID": s.id, "SUCCESS": success, "PERMALINK": s.permalink,
+                 "SCORE": s.score, "IS_SELF": s.is_self,
+                 "DOMAIN": s.domain, "HAS_MEDIA": s.media,
+                 "YEAR": s_date.year, "MONTH": s_date.month,
+                 "AUTHOR_NAME": s.author.name, "GILDED": s.gilded,
+                 "EDITED": s.edited, "TITLE": s.title,
+                 "OVER_18": s.over_18, "STICKIED": s.stickied,
+                 "NUM_COM_FOUND": num_com,
+                 "NUM_COM_LISTED": s.num_comments,
+                 "XML_FN": fn
+                 }
             try:
-                df = df.append(meta, ignore_index=True)
+                df = df.append(m, ignore_index=True)
             except pd.indexes.base.InvalidIndexError:
                 pass
             else:
