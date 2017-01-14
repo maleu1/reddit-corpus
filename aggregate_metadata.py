@@ -57,8 +57,6 @@ def main(generate=True, analyze=True):
         logging.info("Combining metadata from {} files"
                      .format(len(meta_files)))
         meta_df = combine_metadata(meta_files)
-        logging.info("Adding information to {} rows"
-                     .format(len(meta_df.index)))
         meta_df.to_csv(PATH["metadata"])
     if analyze:
         try:
@@ -74,27 +72,27 @@ def main(generate=True, analyze=True):
             size_df = meta_df.groupby(["SUBREDDIT"]).size()
             size_df = size_df.rename("NUM_SUBMISSIONS").to_frame()
             size_df.to_csv(os.path.join(DIR["stats"],
-                                        "num_subs_by_subreddit.csv"))
+                                        "submissions_by_subreddit.csv"))
             size_df = meta_df.groupby(["DATE"]).size()
             size_df = size_df.rename("NUM_SUBMISSIONS").to_frame()
             size_df.to_csv(os.path.join(DIR["stats"],
-                                        "num_subs_by_date.csv"))
+                                        "submissions_by_date.csv"))
             size_df = meta_df.groupby(["YEAR"]).size()
             size_df = size_df.rename("NUM_SUBMISSIONS").to_frame()
             size_df.to_csv(os.path.join(DIR["stats"],
-                                        "num_subs_by_year.csv"))
+                                        "submissions_by_year.csv"))
             size_df = meta_df.groupby(["MONTH"]).size()
             size_df = size_df.rename("NUM_SUBMISSIONS").to_frame()
             size_df.to_csv(os.path.join(DIR["stats"],
-                                        "num_subs_by_month.csv"))
+                                        "submissions_by_month.csv"))
             size_df = meta_df.groupby(["YEAR", "MONTH"]).size()
             size_df = size_df.rename("NUM_SUBMISSIONS").to_frame()
             size_df.to_csv(os.path.join(DIR["stats"],
-                                        "num_subs_by_year_month.csv"))
+                                        "submissions_by_year_month.csv"))
             size_df = meta_df.groupby(["SUBREDDIT", "YEAR"]).size()
             size_df = size_df.rename("NUM_SUBMISSIONS").to_frame()
             size_df.to_csv(os.path.join(DIR["stats"],
-                                        "num_subs_by_subreddit_year.csv"))
+                                        "submissions_by_subreddit_year.csv"))
 
 
 if __name__ == "__main__":

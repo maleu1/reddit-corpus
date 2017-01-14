@@ -235,7 +235,6 @@ def main():
     formatter = logging.Formatter('%(asctime)-8s: %(levelname)-8s %(message)s')
     console.setFormatter(formatter)
     logging.getLogger('').addHandler(console)
-
     ensure_dirs()
     try:
         meta_df = pd.read_csv(PATH["metadata"], index_col=0)

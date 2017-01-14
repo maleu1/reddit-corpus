@@ -62,9 +62,7 @@ def strip_tags(s):
 
 
 def create_xml_doc(s):
-    """
-        Creates an xml doc for a submission on reddit.
-    """
+    """Creates an xml doc for a submission on reddit."""
     s_date = datetime.datetime.fromtimestamp(s.created_utc)
     s_node = etree.Element("submission")
     cs_node = etree.Element("comments")
@@ -138,9 +136,15 @@ def process_date(d, subreddit, reddit):
         d = d.date()
     except AttributeError:
         pass
+    try:
+        this_subreddit = reddit.subreddit(subreddit)
+    except Exception as e:  # overly broad
+        logging.warning(e)
+        time.sleep(60)
+        process_date(d, subreddit, reddit)
 
-    this_subreddit = reddit.subreddit(subreddit)
-    subreddit_created = datetime.datetime.utcfromtimestamp(this_subreddit.created_utc)
+    subreddit_created = datetime.datetime.utcfromtimestamp(
+        this_subreddit.created_utc)
     if subreddit_created.date() > d:
         return
     ts1, ts2 = get_timestamps_for_date(d)
@@ -186,8 +190,8 @@ def process_date(d, subreddit, reddit):
                         logging.warning(e)
                         success = False
                     else:
-                        logging.info("{}\t{}\t{}".format(d,
-                                                         s.subreddit.display_name,
+                        logging.info("{}\t{}\t{}".format(d, 
+                                                        s.subreddit.display_name,
                                                          s.title))
                     success = True
                 else:
@@ -211,19 +215,18 @@ def process_date(d, subreddit, reddit):
                     pass
                 else:
                     df.to_csv(csv_fp)
-    except prawcore.exceptions.ServerError:  # requests.exceptions.HTTPError as e:
+    except Exception as e:  # limit to expected exception types later
         # Wait 60sec, establish a new connection, and try again
         logging.warn(e)
         time.sleep(60)
         reddit = get_connection()
         process_date(d, subreddit, reddit)
-        
 
 
 def get_last_indexed_date():
     pattern = os.path.join(DIR["meta"], "*_[0-9]*.csv")
-    last_date = "1984-02-24"
-    year = "1984"
+    last_date = str(FIRST_DAY)
+    year = str(YEARS[0])
     files = reversed(glob.glob(pattern))
     for f in files:
         y = os.path.basename(f).split("_")[0].replace(".csv", "")
@@ -239,16 +242,17 @@ def get_last_indexed_date():
         return FIRST_DAY
     else:
         return last_date
-    
-				
+
+
 def get_dates(from_last=True):
     if from_last:
         last = get_last_indexed_date()
-        dates = [last + datetime.timedelta(days=n) for n in range((LAST_DAY - FIRST_DAY).days + 1)]
+        dates = [last + datetime.timedelta(days=n) for n
+                 in range((LAST_DAY - FIRST_DAY).days + 1)]
     else:
-        dates = [FIRST_DAY + datetime.timedelta(days=n) for n in range((LAST_DAY - FIRST_DAY).days + 1)]
+        dates = [FIRST_DAY + datetime.timedelta(days=n) for n
+                 in range((LAST_DAY - FIRST_DAY).days + 1)]
     return dates
-
 
 
 def process_r_nba_by_date(dates, reddit):
@@ -277,11 +281,13 @@ def process_sub_first(dates, reddit):
         for d in dates:
             process_date(d, s, reddit)
 
+
 def get_connection():
     reddit = praw.Reddit(user_agent=USER_AGENT,
                          client_id=CLIENT_ID,
                          client_secret=CLIENT_SECRET)
     return reddit
+
 
 def main(args):
     logging.basicConfig(filename="download.log", level=logging.INFO,
@@ -292,7 +298,6 @@ def main(args):
     console.setFormatter(formatter)
     logging.getLogger('').addHandler(console)
     me = SingleInstance()
-
     if not CONTINUE_FROM_LAST:
         dates = get_dates(from_last=False)
     else:
