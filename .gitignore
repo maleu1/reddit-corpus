@@ -1,8 +1,9 @@
-meta
-xml
-corpus
-stats
-lists
+/meta
+/xml
+/corpus
+/stats
+/lists
+config.py
 #
 *.csv
 *.log

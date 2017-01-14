@@ -5,9 +5,10 @@ import time
 import re
 import argparse
 import logging
-
+import glob
 import praw
 import ftfy
+from tendo.singleton import SingleInstance
 from lxml import etree
 import pandas as pd
 
@@ -40,22 +41,17 @@ def naive_to_eastern_datetime(dt):
     return eastern.localize(dt)
 
 
-def datetime_utc_to_unix(dt):
-    #  # convert utc datetime to unix timestamp without milliseconds
-    return int(dt.strftime("%s"))
-
-
 def get_timestamps_for_date(d):
-    start_str = "{} 00:00:00".format(d.date())
-    end_str = "{} 23:59:59".format(d.date())
+    start_str = "{} 00:00:00".format(d)
+    end_str = "{} 23:59:59".format(d)
     start_date = naive_to_eastern_datetime(datetime.datetime.strptime(
         start_str, "%Y-%m-%d %H:%M:%S"))
     end_date = naive_to_eastern_datetime(datetime.datetime.strptime(
         end_str, "%Y-%m-%d %H:%M:%S"))
     start_date = start_date.astimezone(pytz.utc)
     end_date = end_date.astimezone(pytz.utc)
-    ts1 = datetime_utc_to_unix(start_date)
-    ts2 = datetime_utc_to_unix(end_date)
+    ts1 = int(start_date.timestamp())
+    ts2 = int(end_date.timestamp())
     return ts1, ts2
 
 
@@ -138,6 +134,15 @@ def create_xml_doc(s):
 
 
 def process_date(d, subreddit, reddit):
+    try:  # dirty hack until source of accidental YYYY-MM-DD HH:MM:SS found
+        d = d.date()
+    except AttributeError:
+        pass
+
+    this_subreddit = reddit.subreddit(subreddit)
+    subreddit_created = datetime.datetime.utcfromtimestamp(this_subreddit.created_utc)
+    if subreddit_created.date() > d:
+        return
     ts1, ts2 = get_timestamps_for_date(d)
     csv_fn = "{}_{}.csv".format(subreddit.lower(), d.year)
     csv_fp = os.path.join(DIR["meta"], csv_fn)
@@ -155,88 +160,128 @@ def process_date(d, subreddit, reddit):
         os.makedirs(dn)
     except FileExistsError:
         pass
-    root = etree.Element("reddit")
-    root.set("date", str(d.date()))
-    root.set("subreddit", subreddit)
-    tree = etree.ElementTree(root)
-    fn = "reddit_{}_{}.xml".format(subreddit.lower(),
-                                   str(d.date()))
+    fn = "reddit_{}_{}.xml".format(subreddit.lower(), str(d))
     fp = os.path.join(dn, fn)
-    for s in reddit.subreddit(subreddit).submissions(start=ts1, end=ts2):
-        if str(s.id) not in set(str(df["ID"])):
-            s_node, num_com = create_xml_doc(s)
-            if s_node is not None:
-                root.append(s_node)
-                s_date = datetime.datetime.fromtimestamp(s.created_utc)
-                try:
-                    tree.write(fp, pretty_print=True, encoding='utf-8',
-                               xml_declaration=True)
-                except Exception as e:
-                    logging.warning(e)
-                    success = False
+    try:
+        tree = etree.parse(fp)
+    except IOError:
+        root = etree.Element("reddit")
+        root.set("date", str(d))
+        root.set("subreddit", subreddit)
+        root.set("subreddit_created", str(subreddit_created))
+        tree = etree.ElementTree(root)
+    else:
+        root = tree.getroot()
+    try:
+        for s in reddit.subreddit(subreddit).submissions(start=ts1, end=ts2):
+            if str(s.id) not in set(str(df["ID"])):
+                s_node, num_com = create_xml_doc(s)
+                if s_node is not None:
+                    root.append(s_node)
+                    s_date = datetime.datetime.utcfromtimestamp(s.created_utc)
+                    try:
+                        tree.write(fp, pretty_print=True, encoding='utf-8',
+                                   xml_declaration=True)
+                    except Exception as e:
+                        logging.warning(e)
+                        success = False
+                    else:
+                        logging.info("{}\t{}\t{}".format(d,
+                                                         s.subreddit.display_name,
+                                                         s.title))
+                    success = True
                 else:
-                    logging.info("{}\t{}\t{}".format(s_date.date(),
-                                                     s.subreddit.display_name,
-                                                     s.title))
-                success = True
-            else:
-                success = False
-            m = {"DATE": s_date.date(), "SUBREDDIT": subreddit,
-                 "FETCHED": datetime.datetime.now().date(),
-                 "ID": s.id, "SUCCESS": success, "PERMALINK": s.permalink,
-                 "SCORE": s.score, "IS_SELF": s.is_self,
-                 "DOMAIN": s.domain, "HAS_MEDIA": s.media,
-                 "YEAR": s_date.year, "MONTH": s_date.month,
-                 "AUTHOR_NAME": s.author.name, "GILDED": s.gilded,
-                 "EDITED": s.edited, "TITLE": s.title,
-                 "OVER_18": s.over_18, "STICKIED": s.stickied,
-                 "NUM_COM_FOUND": num_com,
-                 "NUM_COM_LISTED": s.num_comments,
-                 "XML_FN": fn
-                 }
-            try:
-                df = df.append(m, ignore_index=True)
-            except pd.indexes.base.InvalidIndexError:
-                pass
-            else:
-                df.to_csv(csv_fp)
+                    success = False
+                m = {"DATE": d, "SUBREDDIT": subreddit,
+                     "FETCHED": datetime.datetime.now().date(),
+                     "ID": s.id, "SUCCESS": success, "PERMALINK": s.permalink,
+                     "SCORE": s.score, "IS_SELF": s.is_self,
+                     "DOMAIN": s.domain, "HAS_MEDIA": s.media,
+                     "YEAR": s_date.year, "MONTH": s_date.month,
+                     "AUTHOR_NAME": s.author.name, "GILDED": s.gilded,
+                     "EDITED": s.edited, "TITLE": s.title,
+                     "OVER_18": s.over_18, "STICKIED": s.stickied,
+                     "NUM_COM_FOUND": num_com,
+                     "NUM_COM_LISTED": s.num_comments,
+                     "XML_FN": fn
+                     }
+                try:
+                    df = df.append(m, ignore_index=True)
+                except pd.indexes.base.InvalidIndexError:
+                    pass
+                else:
+                    df.to_csv(csv_fp)
+    except prawcore.exceptions.ServerError:  # requests.exceptions.HTTPError as e:
+        # Wait 60sec, establish a new connection, and try again
+        logging.warn(e)
+        time.sleep(60)
+        reddit = get_connection()
+        process_date(d, subreddit, reddit)
+        
 
 
-def get_dates():
-    dates = [FIRST_DAY + datetime.timedelta(days=n) for n in
-             range((LAST_DAY - FIRST_DAY).days + 1)]
+def get_last_indexed_date():
+    pattern = os.path.join(DIR["meta"], "*_[0-9]*.csv")
+    last_date = "1984-02-24"
+    year = "1984"
+    files = reversed(glob.glob(pattern))
+    for f in files:
+        y = os.path.basename(f).split("_")[0].replace(".csv", "")
+        if y < year:
+            break
+        else:
+            df = pd.read_csv(f, index_col=0)
+            max_date = df["DATE"].max()
+            if max_date > last_date:
+                last_date = max_date
+    last_date = datetime.datetime.strptime(last_date, "%Y-%m-%d")
+    if last_date <= FIRST_DAY:
+        return FIRST_DAY
+    else:
+        return last_date
+    
+				
+def get_dates(from_last=True):
+    if from_last:
+        last = get_last_indexed_date()
+        dates = [last + datetime.timedelta(days=n) for n in range((LAST_DAY - FIRST_DAY).days + 1)]
+    else:
+        dates = [FIRST_DAY + datetime.timedelta(days=n) for n in range((LAST_DAY - FIRST_DAY).days + 1)]
     return dates
+
 
 
 def process_r_nba_by_date(dates, reddit):
     """For each date get all submissions from r/nba"""
-    reddit = praw.Reddit(user_agent=USER_AGENT,
-                         client_id=CLIENT_ID,
-                         client_secret=CLIENT_SECRET)
     for d in dates:
         process_date(d, "nba", reddit)
 
 
 def process_team_subs_by_date(dates, reddit):
-    """For each date, get all submissions from all team subreddits """
+    """For each date, get all submissions from all team subreddits"""
     for d in dates:
         for v in sorted(TEAM_SUBREDDITS.values()):
             process_date(d, v, reddit)
 
 
 def process_date_first(dates, reddit):
-    """ For each date, get all submissions for each subreddit"""
+    """For each date, get all submissions for each subreddit"""
     for d in dates:
         for s in sorted(SUBREDDITS):
             process_date(d, s, reddit)
 
 
 def process_sub_first(dates, reddit):
-    """ For each subreddit, get all submissions for each date"""
+    """For each subreddit, get all submissions for each date"""
     for s in sorted(SUBREDDITS):
         for d in dates:
             process_date(d, s, reddit)
 
+def get_connection():
+    reddit = praw.Reddit(user_agent=USER_AGENT,
+                         client_id=CLIENT_ID,
+                         client_secret=CLIENT_SECRET)
+    return reddit
 
 def main(args):
     logging.basicConfig(filename="download.log", level=logging.INFO,
@@ -246,11 +291,13 @@ def main(args):
     formatter = logging.Formatter('%(levelname)-8s %(message)s')
     console.setFormatter(formatter)
     logging.getLogger('').addHandler(console)
-    dates = get_dates()
-    reddit = praw.Reddit(user_agent=USER_AGENT,
-                         client_id=CLIENT_ID,
-                         client_secret=CLIENT_SECRET)
+    me = SingleInstance()
 
+    if not CONTINUE_FROM_LAST:
+        dates = get_dates(from_last=False)
+    else:
+        dates = get_dates()
+    reddit = get_connection()
     if args.nba_only:
         process_r_nba_by_date(dates, reddit)
     elif args.team_only:
