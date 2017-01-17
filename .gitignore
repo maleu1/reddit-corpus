@@ -6,8 +6,11 @@
 /lists
 /links
 /logs
+/plots
 # Files
 config.py
+*.csv
+*.log
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
