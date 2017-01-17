@@ -31,26 +31,28 @@ except ImportError as e:
 """
 
 
-def get_xml(r):
+def get_xml(fp):
     try:
-        return etree.parse(os.path.join(DIR["xml"], r["XML_PATH"]))
+        return etree.parse(os.path.join(DIR["xml"], fp))
     except (IOError, TypeError):
         return None
 
 
 def create_subcorpus(g):
     r = g.iloc[0]
+    y = str(int(r["YEAR"]))
     m = str(int(r["MONTH"])).zfill(2)
     handle = "{}_{}-{}".format(r["SUBREDDIT"], int(r["YEAR"]), m)
     num_subs = len(g)
-    post_xml_df = g.apply(get_xml, axis="columns")
+    filenames = sorted(g["XML_FN"])
     root = etree.Element("subcorpus")
     root.set("num_sub", str(num_subs))
     root.set("year", str(r["YEAR"]))
     root.set("month", str(r["MONTH"]))
     root.set("subreddit", r["SUBREDDIT"])
     root.set("handle", handle)
-    for i, tree in post_xml_df.iteritems():
+    for fn in filenames:
+        tree = get_xml(os.path.join(r["SUBREDDIT"].lower(), y, fn))
         if tree is not None:
             sub = tree.find(".//submission")
             sub.set("handle", handle)
@@ -226,9 +228,12 @@ def ensure_dirs():
 
 
 def main():
-    logging.basicConfig(filename="corpus.log", level=logging.INFO,
-                        format='%(asctime)-8s %(levelname)-8s %(message)s',
-                        datefmt='%y-%m-%d %H:%M',
+    try:
+        os.makedirs(DIR["logs"])
+    except FileExistsError:
+        pass
+    logfile = os.path.join(DIR["logs"], "download.log")
+    logging.basicConfig(filename=logfile, level=logging.INFO,
                         filemode="w")
     console = logging.StreamHandler()
     console.setLevel(logging.INFO)
@@ -239,7 +244,7 @@ def main():
     try:
         meta_df = pd.read_csv(PATH["metadata"], index_col=0)
     except IOError:
-        logging.warning("Run process_metadata.py and make sure {} exists"
+        logging.warning("Run aggregate_metadata.py and make sure {} exists"
                         .format(PATH["METADATA"]))
     else:
         # group by subreddit and YYYY-MM for subcorpora

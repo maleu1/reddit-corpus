@@ -132,10 +132,6 @@ def create_xml_doc(s):
 
 
 def process_date(d, subreddit, reddit):
-    try:  # dirty hack until source of accidental YYYY-MM-DD HH:MM:SS found
-        d = d.date()
-    except AttributeError:
-        pass
     try:
         this_subreddit = reddit.subreddit(subreddit)
     except Exception as e:  # overly broad
@@ -178,7 +174,7 @@ def process_date(d, subreddit, reddit):
         root = tree.getroot()
     try:
         for s in reddit.subreddit(subreddit).submissions(start=ts1, end=ts2):
-            if str(s.id) not in set(str(df["ID"])):
+            if str(s.id) not in set(df["ID"]):
                 s_node, num_com = create_xml_doc(s)
                 if s_node is not None:
                     root.append(s_node)
@@ -190,8 +186,9 @@ def process_date(d, subreddit, reddit):
                         logging.warning(e)
                         success = False
                     else:
-                        logging.info("{}\t{}\t{}".format(d, 
-                                                        s.subreddit.display_name,
+                        logging.info("{}\t{}\t{}".format(d,
+                                                         s.subreddit
+                                                         .display_name,
                                                          s.title))
                     success = True
                 else:
@@ -215,6 +212,8 @@ def process_date(d, subreddit, reddit):
                     pass
                 else:
                     df.to_csv(csv_fp)
+            else:
+                print(d, "\t", subreddit)
     except Exception as e:  # limit to expected exception types later
         # Wait 60sec, establish a new connection, and try again
         logging.warn(e)
@@ -237,7 +236,7 @@ def get_last_indexed_date():
             max_date = df["DATE"].max()
             if max_date > last_date:
                 last_date = max_date
-    last_date = datetime.datetime.strptime(last_date, "%Y-%m-%d")
+    last_date = datetime.datetime.strptime(last_date, "%Y-%m-%d").date()
     if last_date <= FIRST_DAY:
         return FIRST_DAY
     else:
@@ -268,6 +267,13 @@ def process_team_subs_by_date(dates, reddit):
             process_date(d, v, reddit)
 
 
+def process_rel_subs_by_date(dates, reddit):
+    """For each date, get all submissions from all team subreddits"""
+    for d in dates:
+        for v in sorted(RELATED_SUBREDDITS.values()):
+            process_date(d, v, reddit)
+
+
 def process_date_first(dates, reddit):
     """For each date, get all submissions for each subreddit"""
     for d in dates:
@@ -290,7 +296,13 @@ def get_connection():
 
 
 def main(args):
-    logging.basicConfig(filename="download.log", level=logging.INFO,
+    try:
+        os.makedirs(DIR["logs"])
+    except FileExistsError:
+        pass
+
+    logfile = os.path.join(DIR["logs"], "download.log")
+    logging.basicConfig(filename=logfile, level=logging.INFO,
                         filemode="w")
     console = logging.StreamHandler()
     console.setLevel(logging.INFO)
@@ -298,15 +310,21 @@ def main(args):
     console.setFormatter(formatter)
     logging.getLogger('').addHandler(console)
     me = SingleInstance()
-    if not CONTINUE_FROM_LAST:
-        dates = get_dates(from_last=False)
+    if args.live:
+        dates = [(datetime.datetime.utcnow() -
+                 datetime.timedelta(days=int(args.live))).date()]
     else:
-        dates = get_dates()
+        if not CONTINUE_FROM_LAST:
+            dates = get_dates(from_last=False)
+        else:
+            dates = get_dates()
     reddit = get_connection()
     if args.nba_only:
         process_r_nba_by_date(dates, reddit)
     elif args.team_only:
         process_team_subs_by_date(dates, reddit)
+    elif args.rel_only:
+        process_rel_subs_by_date(dates, reddit)
     elif args.subreddit_first:
         process_sub_first(dates, reddit)
     else:
@@ -315,7 +333,7 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Download reddit posts. "
-                                     "Defaults to --date-first.")
+                                     "Defaults to --by-date and not --live.")
     method_group = parser.add_mutually_exclusive_group()
     method_group.add_argument('-d', '--date-first', dest="date_first",
                               help="Download date by date (all subreddits)",
@@ -331,5 +349,13 @@ if __name__ == "__main__":
     method_group.add_argument('-t', '--team-only', dest="team_only",
                               help="Only download from team subreddits",
                               action="store_true")
+    method_group.add_argument('-r', '--related', dest="rel_only",
+                              help="Only download from related subreddits",
+                              action="store_true")
+    parser.add_argument('-l', '--live', dest="live",
+                        help="Download data for the date that was N days ago"
+                        " (UTC).",
+                        action="store", metavar="N", type=int)
+
     args = parser.parse_args()
     main(args)
