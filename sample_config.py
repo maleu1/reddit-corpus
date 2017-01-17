@@ -33,11 +33,14 @@ If CONTINUE_FROM_LAST is True the script will start with from the last day for w
 it has downloaded data instead of FIRST_DAY after a restart. If FALSE it will
 always iterate from FIRST_DAY to LAST_DAY no matter what has been indexed.
 """
+FIRST_DAY = "2016-12-31"
 LAST_DAY = "2016-12-31"
-FIRST_DAY = datetime.datetime.strptime(FIRST_DAY, "%Y-%m-%d")
-LAST_DAY = datetime.datetime.strptime(LAST_DAY, "%Y-%m-%d")
+FIRST_DAY = datetime.datetime.strptime(FIRST_DAY, "%Y-%m-%d").date()
+LAST_DAY = datetime.datetime.strptime(LAST_DAY, "%Y-%m-%d").date()
 YEARS = range(2010, 2017)
-CONTINUE_FROM_LAST = True  
+CONTINUE_FROM_LAST = False
+INCLUDE_RELATED = True
+
 
 TEAM_SUBREDDITS = {"Los Angeles Lakers ": "lakers",
                    "Golden State Warriors ": "warriors",
@@ -73,8 +76,21 @@ TEAM_SUBREDDITS = {"Los Angeles Lakers ": "lakers",
 SUBREDDITS = [v for v in TEAM_SUBREDDITS.values()]
 SUBREDDITS.append("nba")
 
-BASE_DIR = os.path.dirname(os.path.realpath(__file__))
+RELATED_SUBREDDITS = {"Eurolague": "euroleague",
+                      "nbabreakdown": "nbabreakdown",
+                      "nbadiscussion": "nbadiscussion",
+                      "collegebasketball": "collegebasketball",
+                      "basketball": "basketball",
+                      "nbalounge": "nbalounge",
+                      "nbaww": "nbaww",
+                      "fantasybball": "fantasybball",
+                      "NBAGifs": "nbagifs",
+                      "WNBA": "wnba",
+                      "nbaimages": "nbaimages"}
+if INCLUDE_RELATED:
+    SUBREDDITS += list(RELATED_SUBREDDITS.values())
 
+BASE_DIR = os.path.dirname(os.path.realpath(__file__))
 DIR = {"xml": os.path.join(BASE_DIR, "xml"),
        "meta": os.path.join(BASE_DIR, "meta"),
        "corpus_xml": os.path.join(BASE_DIR, "corpus", "xml"),
@@ -84,7 +100,8 @@ DIR = {"xml": os.path.join(BASE_DIR, "xml"),
        "tokens": os.path.join(BASE_DIR, "lists", "tokens"),
        "keywords": os.path.join(BASE_DIR, "lists", "keywords"),
        "stats": os.path.join(BASE_DIR, "stats"),
-       "plots": os.path.join(BASE_DIR, "plots")
+       "links": os.path.join(BASE_DIR, "links"),
+       "logs": os.path.join(BASE_DIR, "logs")
        }
 
-PATH = {"metadata": os.path.join(BASE_DIR, "all_metadata.csv")}
+PATH = {"metadata": os.path.join(BASE_DIR, "meta", "metadata.csv")}
