@@ -1,12 +1,13 @@
+# Folders
 /meta
 /xml
 /corpus
 /stats
 /lists
+/links
+/logs
+# Files
 config.py
-#
-*.csv
-*.log
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
