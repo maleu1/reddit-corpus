@@ -67,6 +67,8 @@ def create_xml_doc(s):
     s_node = etree.Element("submission")
     cs_node = etree.Element("comments")
 
+    id_list = set([])  # quick fix to avoid duplicate comments being added
+
     s_att_list = ["created_utc", "edited", "has_media",
                   "gilded", "score", "title", "id", "domain",
                   "url", "permalink", "locked",
@@ -123,7 +125,9 @@ def create_xml_doc(s):
                 c_node.text = ftfy.fix_text(c.body)
             except ValueError as e:
                 c_node.text = strip_tags(ftfy.fix_text(c.body_html)).strip()
-        cs_node.append(c_node)
+        if c.id not in id_list:
+            cs_node.append(c_node)
+            id_list.add(c.id)
         num_comments += 1
     s_node.append(cs_node)
     s_node.set("num_com_found", str(num_comments))
@@ -172,9 +176,10 @@ def process_date(d, subreddit, reddit):
         tree = etree.ElementTree(root)
     else:
         root = tree.getroot()
+    id_set = set(df["ID"])
     try:
         for s in reddit.subreddit(subreddit).submissions(start=ts1, end=ts2):
-            if str(s.id) not in set(df["ID"]):
+            if str(s.id) not in id_set:
                 s_node, num_com = create_xml_doc(s)
                 if s_node is not None:
                     root.append(s_node)
@@ -191,13 +196,14 @@ def process_date(d, subreddit, reddit):
                                                          .display_name,
                                                          s.title))
                     success = True
+                    id_set.add(str(s.id))
                 else:
                     success = False
                 m = {"DATE": d, "SUBREDDIT": subreddit,
                      "FETCHED": datetime.datetime.now().date(),
                      "ID": s.id, "SUCCESS": success, "PERMALINK": s.permalink,
                      "SCORE": s.score, "IS_SELF": s.is_self,
-                     "DOMAIN": s.domain, "HAS_MEDIA": s.media,
+                     "DOMAIN": s.domain,
                      "YEAR": s_date.year, "MONTH": s_date.month,
                      "AUTHOR_NAME": s.author.name, "GILDED": s.gilded,
                      "EDITED": s.edited, "TITLE": s.title,
@@ -211,14 +217,14 @@ def process_date(d, subreddit, reddit):
                 except pd.indexes.base.InvalidIndexError:
                     pass
                 else:
+                    df.drop_duplicates(inplace=True)
                     df.to_csv(csv_fp)
             else:
                 print(d, "\t", subreddit)
     except Exception as e:  # limit to expected exception types later
         # Wait 60sec, establish a new connection, and try again
         logging.warn(e)
-        time.sleep(60)
-        reddit = get_connection()
+        time.sleep(120)
         process_date(d, subreddit, reddit)
 
 

@@ -28,27 +28,18 @@ USER_AGENT = "MEANINGFUL TEXT TO IDENTIFY THE PROJECT AND ACCOUNT"
 r/nba was created on 2008-11-04,with r/lakers and r/ripcity also in 2008.
 Most of the other team subs were created in 2010.
 Posts are rare even in early 2010, so skipping 2008 & 2009 seems reasonable.
-
-If CONTINUE_FROM_LAST is True the script will start with from the last day for which
-it has downloaded data instead of FIRST_DAY after a restart. If FALSE it will
-always iterate from FIRST_DAY to LAST_DAY no matter what has been indexed.
+If CONTINUE_FROM_LAST is True the script will start with from the last day for
+which it has downloaded data instead of FIRST_DAY after a restart.
+If FALSE it will always iterate from FIRST_DAY to LAST_DAY no matter what has
+been indexed.
 """
-<<<<<<< HEAD
-LAST_DAY = "2016-12-31"
-FIRST_DAY = datetime.datetime.strptime(FIRST_DAY, "%Y-%m-%d")
-LAST_DAY = datetime.datetime.strptime(LAST_DAY, "%Y-%m-%d")
-YEARS = range(2010, 2017)
-CONTINUE_FROM_LAST = True  
-=======
-FIRST_DAY = "2016-12-31"
+FIRST_DAY = "2010-10-01"
 LAST_DAY = "2016-12-31"
 FIRST_DAY = datetime.datetime.strptime(FIRST_DAY, "%Y-%m-%d").date()
 LAST_DAY = datetime.datetime.strptime(LAST_DAY, "%Y-%m-%d").date()
 YEARS = range(2010, 2017)
 CONTINUE_FROM_LAST = False
 INCLUDE_RELATED = True
-
->>>>>>> 2abe00acdb08f7e500443bebb55b2aacc1fec42b
 
 TEAM_SUBREDDITS = {"Los Angeles Lakers ": "lakers",
                    "Golden State Warriors ": "warriors",

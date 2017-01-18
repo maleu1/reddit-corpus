@@ -51,12 +51,18 @@ def create_subcorpus(g):
     root.set("month", str(r["MONTH"]))
     root.set("subreddit", r["SUBREDDIT"])
     root.set("handle", handle)
+    id_set = set([])
     for fn in filenames:
         tree = get_xml(os.path.join(r["SUBREDDIT"].lower(), y, fn))
         if tree is not None:
-            sub = tree.find(".//submission")
-            sub.set("handle", handle)
-            root.append(sub)
+            subs = tree.findall(".//submission")
+            for sub in subs:
+                sid = sub.get("id")
+                # why is this dedup even needed? DL bug?
+                if sid not in id_set:
+                    id_set.add(sid)
+                    sub.set("handle", handle)
+                    root.append(sub)
     tree = etree.ElementTree(root)
     fn = "corpus_{}.xml".format(handle)
     fp = os.path.join(DIR["corpus_xml"], fn)
