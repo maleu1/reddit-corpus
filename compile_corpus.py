@@ -38,11 +38,91 @@ def get_xml(fp):
         return None
 
 
+def create_empty_xml_doc(d, subreddit, subreddit_created):
+    root = etree.Element("reddit")
+    root.set("date", str(d))
+    root.set("subreddit", subreddit)
+    root.set("subreddit_created", str(subreddit_created))
+    return etree.ElementTree(root)
+
+
+def move_subs_to_correct_files(to_move):
+    """See comment in create_subcorpus()"""
+    for sub, fn in to_move:
+        sub_date = sub.get("date")
+        sid = sub.get("id")
+        year = sub_date.split("-")[0]
+        subreddit = sub.get("subreddit_name").lower()
+        fn_year = fn.split("_")[-1].split("-")[0]
+        fn_base = "_".join(fn.split("_")[:-1])
+        c_fn = "{}_{}.xml".format(fn_base, sub_date)
+        logging.info("Moving miscategorized element {} {} => {} {}"
+                     .format(sid, fn, sub_date, c_fn))
+        try:
+            tree = etree.parse(os.path.join(DIR["xml"], subreddit, fn_year,
+                                            fn))
+        except IOError:
+            pass  # no need to delete if whole doc does not exists
+        else:
+            old_matches = tree.findall(".//submission[@id='{}']".format(sid))
+            # remove
+            for old in old_matches:
+                old.getparent().remove(old)
+            tree.write(os.path.join(DIR["xml"], subreddit, fn_year, fn),
+                       pretty_print=True, encoding='utf-8',
+                       xml_declaration=True)
+        # check if already in correct, add if not
+        try:
+            c_tree = etree.parse(os.path.join(DIR["xml"], subreddit, year,
+                                              c_fn))
+        except IOError:  # may not exist
+            try:
+                subreddit_created = tree.getroot().get("subreddit_created")
+            except:  # if not found, just leave empty
+                subreddit_created = ""
+            c_tree = create_empty_xml_doc(sub_date, subreddit,
+                                          subreddit_created)
+        correct = c_tree.find(".//submission[@id='{}']".format(sid))
+        if not correct:
+            root = c_tree.getroot()
+            root.insert(0, sub)
+            c_tree.write(os.path.join(DIR["xml"], subreddit, year, c_fn),
+                         pretty_print=True, encoding='utf-8',
+                         xml_declaration=True)
+        # redownload atlanta hawks 2013-2016 and celtics 2013-2015
+        # Fix metadata
+        df = pd.read_csv(os.path.join(DIR["meta"], "{}_{}.csv"
+                                      .format(subreddit, fn_year)),
+                         index_col=0)
+        df.loc[df.ID == sid, 'DATE'] = sub_date
+        df.loc[df.ID == sid, 'MONTH'] = int(sub_date.split("-")[1])
+        df.loc[df.ID == sid, 'XML_FN'] = c_fn
+        if fn_year != year:
+            c_df = pd.read_csv(os.path.join(DIR["meta"], "{}_{}.csv"
+                               .format(subreddit, year)), index_col=0)
+            m = df[df.ID == sid]
+            c_df = c_df.append(m, ignore_index=True)  # append to new
+            c_df.reset_index(inplace=True)
+            c_df.to_csv(os.path.join(DIR["meta"], "{}_{}.csv"
+                                     .format(subreddit, year)))
+            df = df[df.id != sid]  # remove from old
+        df.to_csv(os.path.join(DIR["meta"], "{}_{}.csv".format(subreddit,
+                                                               fn_year)))
+        # in combined metadata file
+        df = pd.read_csv(PATH["metadata"], index_col=0)
+        df.loc[df.ID == sid, 'DATE'] = sub_date
+        df.loc[df.ID == sid, 'MONTH'] = int(sub_date.split("-")[1])
+        df.loc[df.ID == sid, 'XML_FN'] = c_fn
+        df.to_csv(PATH["metadata"])
+
+
 def create_subcorpus(g):
     r = g.iloc[0]
     y = str(int(r["YEAR"]))
     m = str(int(r["MONTH"])).zfill(2)
-    handle = "{}_{}-{}".format(r["SUBREDDIT"], int(r["YEAR"]), m)
+    corpus_ym = "{}-{}".format(y, m)
+    handle = "{}_{}".format(r["SUBREDDIT"], corpus_ym)
+    print("\t", handle)
     num_subs = len(g)
     filenames = sorted(g["XML_FN"])
     root = etree.Element("subcorpus")
@@ -53,16 +133,32 @@ def create_subcorpus(g):
     root.set("handle", handle)
     id_set = set([])
     for fn in filenames:
+        to_move = []
         tree = get_xml(os.path.join(r["SUBREDDIT"].lower(), y, fn))
         if tree is not None:
             subs = tree.findall(".//submission")
             for sub in subs:
+                """Some submissions at the end/start of a month 
+                appear in both XML files, e.g. 2015-01-31 and 2015-02-01.
+                Until that bug is found and fixed make sure that only
+                submissions with a month (which is correctly set in the XML
+                attr) matching the subcorpus month are added. Just to be safe
+                also make sure no duplicate IDs are added within the same
+                month.
+                """
                 sid = sub.get("id")
-                # why is this dedup even needed? DL bug?
-                if sid not in id_set:
+                sub_date = sub.get("date")
+                sub_ym = "-".join(sub_date.split("-")[:2])
+
+                if sid not in id_set and sub_ym == corpus_ym:
                     id_set.add(sid)
                     sub.set("handle", handle)
                     root.append(sub)
+                elif sid not in id_set and sub_ym != corpus_ym:
+                    to_move.append((sub, fn))
+                    id_set.add(sid)
+        if to_move:
+            move_subs_to_correct_files(to_move)
     tree = etree.ElementTree(root)
     fn = "corpus_{}.xml".format(handle)
     fp = os.path.join(DIR["corpus_xml"], fn)

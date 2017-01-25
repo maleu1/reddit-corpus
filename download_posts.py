@@ -36,20 +36,18 @@ except ImportError as e:
 """
 
 
-def naive_to_eastern_datetime(dt):
-    eastern = pytz.timezone('US/Eastern')
-    return eastern.localize(dt)
+def naive_to_utc(dt):
+    utc = pytz.timezone("Etc/UCT")
+    return utc.localize(dt)
 
 
 def get_timestamps_for_date(d):
     start_str = "{} 00:00:00".format(d)
     end_str = "{} 23:59:59".format(d)
-    start_date = naive_to_eastern_datetime(datetime.datetime.strptime(
-        start_str, "%Y-%m-%d %H:%M:%S"))
-    end_date = naive_to_eastern_datetime(datetime.datetime.strptime(
-        end_str, "%Y-%m-%d %H:%M:%S"))
-    start_date = start_date.astimezone(pytz.utc)
-    end_date = end_date.astimezone(pytz.utc)
+    start_date = naive_to_utc(datetime.datetime.strptime(start_str,
+                                                         "%Y-%m-%d %H:%M:%S"))
+    end_date = naive_to_utc(datetime.datetime.strptime(end_str,
+                                                       "%Y-%m-%d %H:%M:%S"))
     ts1 = int(start_date.timestamp())
     ts2 = int(end_date.timestamp())
     return ts1, ts2
@@ -105,7 +103,7 @@ def create_xml_doc(s):
         # TO DO: better solution (wait & retry)
         logging.warning(e)
         time.sleep(90)
-        return False, 0
+        return None, 0
     num_comments = 0
     for c in s.comments.list():
         c_node = etree.Element("comment")
@@ -199,7 +197,7 @@ def process_date(d, subreddit, reddit):
                     id_set.add(str(s.id))
                 else:
                     success = False
-                m = {"DATE": d, "SUBREDDIT": subreddit,
+                m = {"DATE": s_date, "SUBREDDIT": subreddit,
                      "FETCHED": datetime.datetime.now().date(),
                      "ID": s.id, "SUCCESS": success, "PERMALINK": s.permalink,
                      "SCORE": s.score, "IS_SELF": s.is_self,
@@ -222,9 +220,9 @@ def process_date(d, subreddit, reddit):
             else:
                 print(d, "\t", subreddit)
     except Exception as e:  # limit to expected exception types later
-        # Wait 60sec, establish a new connection, and try again
+        # Wait 5min and try again, to deal with e.g. wifi issues
         logging.warn(e)
-        time.sleep(120)
+        time.sleep(300)
         process_date(d, subreddit, reddit)
 
 
@@ -242,6 +240,7 @@ def get_last_indexed_date():
             max_date = df["DATE"].max()
             if max_date > last_date:
                 last_date = max_date
+    last_date = last_date.split()[0]
     last_date = datetime.datetime.strptime(last_date, "%Y-%m-%d").date()
     if last_date <= FIRST_DAY:
         return FIRST_DAY
@@ -307,6 +306,7 @@ def main(args):
     except FileExistsError:
         pass
 
+    me = SingleInstance()
     logfile = os.path.join(DIR["logs"], "download.log")
     logging.basicConfig(filename=logfile, level=logging.INFO,
                         filemode="w")
@@ -315,7 +315,6 @@ def main(args):
     formatter = logging.Formatter('%(levelname)-8s %(message)s')
     console.setFormatter(formatter)
     logging.getLogger('').addHandler(console)
-    me = SingleInstance()
     if args.live:
         dates = [(datetime.datetime.utcnow() -
                  datetime.timedelta(days=int(args.live))).date()]

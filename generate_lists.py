@@ -611,7 +611,8 @@ def get_tar_and_ref_files(tar_pattern, all_files):
     ref_files = [f for f in all_files if f not in tar_files]
     return tar_files, ref_files
 
-def main(args):
+
+def main(args=None):
     try:
         os.makedirs(DIR["tokens"])
     except FileExistsError:
@@ -620,8 +621,12 @@ def main(args):
         os.makedirs(DIR["keywords"])
     except FileExistsError:
         pass
-    create_lists(frequency=args.freq, keywords=args.kw, year=False, 
-                 min_freq=args.min_freq)
+    if args:
+        create_lists(frequency=args.freq, keywords=args.kw, year=False,
+                     min_freq=args.min_freq)
+    else:
+        create_lists(frequency=True, keywords=True, year=False,
+                     min_freq=10)
 
 
 if __name__ == "__main__":
