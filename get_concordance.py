@@ -3,8 +3,12 @@ import re
 import argparse
 import logging
 import glob
+import pprint
+
 from lxml import etree
 import pandas as pd
+import pymongo as pm
+
 
 try:
     from config import DIR, CONC_LEFT, CONC_RIGHT
@@ -12,6 +16,7 @@ except ImportError as e:
     print(e)
     print("Please make sure to (copy &) rename 'sample_config.py' to "
           "'config.py' and insert valid Reddit API credentials.")
+
 """
     This file is part of reddit-nba-corpus.
 
@@ -41,77 +46,17 @@ def kwic_from_match(text, m):
     return kwic
 
 
-def lines_from_elem(elem, search_re):
+def lines_from_string(text, search_re):
     lines = []
-    if elem.text:
-        text = " ".join(elem.itertext())
-        text = text.replace("\n", " ")
-        text = re.sub(r"[ ]{2,}", " ", text)
-        for match in search_re.finditer(text):
-            ln = kwic_from_match(text, match)
-            lines.append(ln)
-
+    text = text.replace("\n", " ")
+    text = re.sub(r"[ ]{2,}", " ", text)
+    for match in search_re.finditer(text):
+        ln = kwic_from_match(text, match)
+        lines.append(ln)
     return lines
 
 
-def fast_conc_iter(context, search_re):
-    """
-    fast_iter is useful if you need to free memory while iterating through
-    a very large XML file.
-    http://lxml.de/parsing.html#modifying-the-tree
-    Based on Liza Daly's fast_iter
-    http://www.ibm.com/developerworks/xml/library/x-hiperfparse/
-    See also http://effbot.org/zone/element-iterparse.htm
-    Slightly customized for concordance used
-    """
-    lines = []
-    for event, elem in context:
-        lines += lines_from_elem(elem, search_re)
-        elem.clear()
-        # Also eliminate now-empty references from the root node to elem
-        for ancestor in elem.xpath('ancestor-or-self::*'):
-            while ancestor.getprevious() is not None:
-                del ancestor.getparent()[0]
-    del context
-    return lines
-
-
-def search_in_file(f, search_re, args):
-    context = etree.iterparse(f, events=('end',),
-                              tag=["comment", "submission"])
-    lines = fast_conc_iter(context, search_re)
-    if lines:
-        fn = os.path.basename(f)
-        for ln in lines:
-            ln["FILENAME"] = fn
-            if args.print is True:
-                print(ln["LEFT"].rjust(CONC_LEFT), "\t", ln["KEY"],
-                      "\t", ln["RIGHT"].ljust(CONC_RIGHT), "\t", fn, "\n")
-    return lines
-
-
-def configure_search_regex(args):
-    flags = re.UNICODE
-    b = r"\b"
-    if args.regex:
-        s = r'{0}{1}{0}'.format(b, args.regex)
-        search_re = re.compile(s, flags=flags)
-    else:
-        s = r'{0}{1}{0}'.format(b, re.escape(args.string.strip()))
-        search_re = re.compile(s, flags=flags)
-    return search_re
-
-
-def search_corpus(args):
-    if args.pos:
-        pattern = os.path.join(DIR["corpus_tag_xml"], "*.xml")
-    else:
-        pattern = os.path.join(DIR["corpus_xml"], "*.xml")
-    all_files = glob.glob(pattern)
-    lines = []
-    search_re = configure_search_regex(args)
-    for f in sorted(all_files):
-        lines += search_in_file(f, search_re, args)
+def save(lines, args):
     if lines and args.csv:
         try:
             os.makedirs(DIR["conc"])
@@ -122,11 +67,43 @@ def search_corpus(args):
         conc_df.to_csv(fp)
         print("Concordance ({} hits) saved to {}".format(len(lines), fp))
     else:
-        print("Found {} hits", len(lines))
+        print("Found {} hits".format(len(lines)))
+
+
+def configure_mongo_search_regex(args):
+    flags = re.UNICODE
+    b = r"\b"
+    if args.regex:
+        s = r'{0}{1}{0}'.format(b, args.regex)
+    else:
+        s = r'{0}{1}{0}'.format(b, re.escape(args.string.strip()))
+    r = {"mongo": "/.*?{}.*?/".format(s), "python": re.compile(s, flags=flags)}
+    return r
+
+
+def search_database(args):
+    lines = []
+    regex = configure_mongo_search_regex(args)
+    client = pm.MongoClient()
+    db = client.nbareddit
+    if args.pos:
+        text_field = "pos"
+    else:
+        text_field = "text"
+    search_args = {text_field: {"$regex": "{}".format(regex["mongo"])}}
+    for r in db.posts.find(search_args):
+        lns = lines_from_string(r[text_field], regex["python"])
+        if args.display:
+            for ln in lns:
+                print(ln["LEFT"].rjust(CONC_LEFT),
+                      "\t", ln["KEY"], "\t", ln["RIGHT"].ljust(CONC_RIGHT),
+                      "\t", r["date"], r["subreddit"], "\n")
+        lines += lns
+    save(lines, args)
 
 
 def main(args):
-    search_corpus(args)
+    search_database(args)
 
 
 if __name__ == "__main__":
@@ -139,13 +116,13 @@ if __name__ == "__main__":
                               dest="string",
                               help="String search", action="store", type=str,
                               metavar="STRING")
-    parser.add_argument('-p', '--print', dest="print",
-                        help="Print lines to console",
+    parser.add_argument('-d', '--display', dest="display",
+                        help="Display lines in console",
                         action="store_true")
     parser.add_argument('-c', '--csv', dest="csv",
                         help="Save lines to CSV file",
                         action="store", type=str, metavar="FILENAME")
-    parser.add_argument('-t', '--tagged', dest="pos",
+    parser.add_argument('-p', '--pos', dest="pos",
                         help="Search part-of-speech tagged corpus",
                         action="store_true")
 
