@@ -3,6 +3,8 @@ A (work-in-progress) toolkit to create and explore a corpus of posts from r/nba,
 
 I will add a requirements.txt and more instructions soon, but the following should get you started if you can not wait.
 
+reddit-corpus is forked from magnusnissel/reddit-nba-corpus which no longer works due to Reddit API changes. This fork uses the Pushshift API instead. 
+
 ## Quick start ##
 
 You will need to create a copy of sample_config.py, rename it to config.py and fill it with reddit account credentials plus whatever settings you want. You can specify a start date and end date in config.py and then use download_posts.py to download date-by-date (either date-first or subreddit-first based on provided arguments) or simply provide the --live argument to the script to download just posts "from N days ago". The latter makes sense if you intend to set up a daily cron job to, e.g., get "yesterday's submissions".
