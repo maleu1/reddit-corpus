@@ -22,8 +22,8 @@ except ImportError as e:
 def get_year_for_date(ts):
     return ts.strftime('%Y')
 
-def open_file(subreddit, year):
-    fn = "reddit_{}_{}.txt".format(subreddit.lower(), year)
+def open_file(filename, year):
+    fn = "reddit_{}_{}.txt".format(filename.lower(), year)
     fp = os.path.join("txt", fn)
     try:
         return open(fp, "a+")
@@ -53,13 +53,13 @@ def process_subreddit(subreddit, api, d):
                 num_comments += 1
                 if num_comments % 50 == 0:
                     latest = comment.created
-                    logging.info("{}\t{}".format(num_comments, comment.created))
+                    logging.info("{}\t{}".format(num_comments, latest))
 
         except Exception as e:  # limit to expected exception types later
             # Wait 5min and try again, to deal with e.g. wifi issues
             logging.warn(e)
             time.sleep(300)
-            process_subreddit(subreddit, api, d)
+            process_subreddit(subreddit, api, latest)
     txt.close()
 
 def get_dates(from_last=True):
@@ -70,6 +70,27 @@ def get_dates(from_last=True):
         dates = [FIRST_DAY + datetime.timedelta(days=n) for n in range((LAST_DAY - FIRST_DAY).days+ 1)]
     return dates
 
+def for_user(api, date, user):
+    txt = open_file(user, "any")
+
+    latest = date
+    num_comment = 0
+    try:
+        #viable alternative:
+        #subreddits = api.search_comments(author=user, aggs='subreddit')
+        subreddit_activity = api.redditor_subreddit_activity(user)
+        if subreddit_activity != None:
+
+            for comment in subreddit_activity["comment"]:
+                num_comment +=1
+                txt.write("{}\t{}".format(num_comment, comment))
+
+                logging.info("{}\t{}".format(num_comment, comment))
+
+    except Exception as e:
+            logging.warn(e)
+    txt.close()
+
 def each_subreddit(api, date):
     for s in sorted(SUBREDDITS):
         process_subreddit(s, api, date)
@@ -77,7 +98,7 @@ def each_subreddit(api, date):
 def main(args):
 
     me = SingleInstance()
-    logfile = os.path.join(DIR["logs"], "download.log")
+    logfile = os.path.join("download.log")
     logging.basicConfig(filename=logfile, level=logging.INFO,
                         filemode="w")
     console = logging.StreamHandler()
@@ -93,15 +114,21 @@ def main(args):
     else:
         date = FIRST_DAY
 
-    each_subreddit(api, date)
+    if (args.user):
+        for_user(api, date, args.user)
+    else:
+        each_subreddit(api, date)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Download reddit posts. "
-                                     "arguments are -d or --date-first for start date")
+                                     "arguments are -d or --date-first for start date, or -u for user posts")
     method_group = parser.add_mutually_exclusive_group()
     method_group.add_argument('-d', '--start-date', dest="first_date",
                               help="Download from this date (all subreddits)",
                               action="store_true")
+
+    method_group = parser.add_mutually_exclusive_group()
+    method_group.add_argument('-u', '--user', help="Get all posts of a user", action="store")
 
     args = parser.parse_args()
     main(args)

@@ -18,7 +18,7 @@ import datetime
     along with reddit-corpus.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-FIRST_DAY = "2005-01-01"
+FIRST_DAY = "2012-04-17"
 LAST_DAY = "2019-04-22"
 
 FIRST_DAY = datetime.datetime.strptime(FIRST_DAY, "%Y-%m-%d").date()
@@ -27,7 +27,7 @@ LAST_DAY = datetime.datetime.strptime(LAST_DAY, "%Y-%m-%d").date()
 CONTINUE_FROM_LAST = False
 INCLUDE_RELATED = False
 
-MAIN_SUBREDDITS = {"Rupaul": "rupaulsdragrace"}
+MAIN_SUBREDDITS = {"LoL": "leagueoflegends"}
 
 SUBREDDITS = [v for v in MAIN_SUBREDDITS.values()]
 
