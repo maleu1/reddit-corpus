@@ -76,16 +76,15 @@ def for_user(api, date, user):
     latest = date
     num_comment = 0
     try:
-        #viable alternative:
-        #subreddits = api.search_comments(author=user, aggs='subreddit')
         subreddit_activity = api.redditor_subreddit_activity(user)
         if subreddit_activity != None:
 
-            for comment in subreddit_activity["comment"]:
-                num_comment +=1
-                txt.write("{}\t{}".format(num_comment, comment))
+            comments = subreddit_activity["comment"]
+            for sr, ct in comments.most_common():
 
-                logging.info("{}\t{}".format(num_comment, comment))
+                txt.write("{}\t{}".format(sr, ct))
+
+                print("{}\t{}".format(sr, ct))
 
     except Exception as e:
             logging.warn(e)
